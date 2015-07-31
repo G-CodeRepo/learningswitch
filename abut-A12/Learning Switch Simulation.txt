@@ -1,0 +1,214 @@
+
+  ICS 451 Assignment 12:
+  Learning Switch Simulation
+
+Assigned April 28th, to be completed by May 5th.
+
+Turn in this assignment by e-mailing to jmoroney@hawaii.edu
+<mailto:jmoroney@hawaii.edu> your code specified below.
+
+You must do this assignment individually.
+
+The following description uses the words *port* and *interface*
+interchangeably, as is common practice. The only exception is that UDP
+ports are not UDP interfaces (there is no such thing as a UDP
+interface). Each simulated interface/port is given its own local UDP
+port to listen on, and a remote UDP port to send packets to. /I suggest
+re-reading this paragraph until you understand it/.
+
+Likewise, *packet* and *frame* may be used interchangeably.
+
+This assignment asks you to implement two programs, both similar to the
+two programs in assignment 10. You may re-use and adapt any code anyone
+on your team created for assignment 10. If you prefer, you may program
+in Python instead of C.
+
+The first program (ethping) creates an Ethernet frame (packet) and sends
+it to your second program, then listens for and prints any received frames.
+
+Your second program (ethlearn) forwards frames according to the learning
+bridge algorithm. If the destination MAC address is found in the
+forwarding table, the frame is forwarded only to the corresponding
+interface. Otherwise, the frame is broadcast out all interfaces except
+the one it was received on.
+
+There is a special case when the destination MAC address is found in the
+forwarding table, and the interface that is found in the forwarding
+table is the same as the interface from which the frame was received. In
+that case, the frame has already reached the destination, and ethlearn
+drops the frame.
+
+Before forwarding, broadcasting, or dropping the frame, the source MAC
+address of the frame is added to the forwarding table together with the
+interface on which the frame was received, replacing any previously
+existing entry for that MAC address. This is the learning part of the
+learning switch or learning bridge.
+
+Your simulated learning switch should also print what happens with each
+received frame, i.e. one of
+
+999 bytes 10:23:45:67:89:ab to fe:dc:ba:98:76:54, port 1, forwarding to port 3
+35 bytes fe:dc:ba:98:76:54 to 10:23:45:67:89:ab, port 5, broadcasting
+777 bytes ba:98:76:54:32:10 to 10:23:45:67:89:ab, port 4 (same), dropping
+
+Unlike in assignments 9 and 10, the forwarding tables for this
+assignment are created dynamically based on the packets received.
+
+When ethping sends receives a frame, it should also print the size,
+source, and destination:
+
+sending 567 bytes 10:23:45:67:89:ab to fe:dc:ba:98:76:54
+got 999 bytes 10:23:45:67:89:ab to fe:dc:ba:98:76:54
+got 456 bytes fe:dc:ba:98:76:54 to 10:23:45:67:89:ab 
+
+Frame payloads may be any number of bytes from 0 to 1500. Including the
+14-byte Ethernet header, frames may have between 14 and 1514 bytes. All
+your code should discard packets that don't fit these bounds..
+
+
+     1. ethping
+
+    Your ethping program should take five parameters:
+
+     1. a (local) UDP port number on which to receive packets
+     2. a remote UDP port number (on ::1) to which to send packets
+     3. the size /s/ in bytes of the Ethernet payload to send (only
+        0..1500 is legal)
+     4. a local MAC address, using the format above, with 6 two-digit
+        hex numbers separated by 5 colons (unlike IPv6 addresses, MAC
+        addresses are never abbreviated)
+     5. a remote MAC address to use as the destination of the packet to
+        send 
+
+    ethping should create a buffer with /s/ bytes of payload preceded by
+    14 bytes of header, beginning with the destination address, then the
+    source address, and finally a two-byte Ethernet type with value
+    0x8888. The contents of the payload should be all zero bytes.
+
+
+     2. ethlearn
+
+    Your ethlearn program takes as many parameters as there are
+    interfaces (you may assume there will never be more than 100
+    interfaces). Each parameter is of the form
+
+    localUDPPort/remoteUDPPort
+
+    Packets sent out this interface are sent using UDP, using as
+    destination address ::1 and remoteUDPPort. In addition to sending,
+    ethlearn must create a thread (a process would not work) for each
+    interface to receive packets from localUDPPort.
+
+    Each interface is simulated by a UDP socket. The socket variables
+    must be global and shared by all the threads. Each thread reads from
+    exactly one of the sockets, but may send (forward or broadcast)
+    frames to all of the other sockets.
+
+    ethlearn must have a forwarding table (with capacity at least 10,000
+    entries) mapping 6-byte MAC addresses to interfaces. This table is
+    shared among all threads in the program (this shared table means we
+    cannot use processes). Because it is shared, any thread accessing
+    the table *must* first acquire a global lock (mutex -- see
+    pthread_mutex_init, pthread_mutex_lock, and pthread_mutex_unlock),
+    and *must* release the lock once the access is complete.
+
+    When one of the threads of ethlearn receives on interface /p/ a
+    frame addressed from S to D (that is, D and S are the destination
+    and source addresses in the ethernet header), it must:
+
+     1. acquire the lock
+     2. look up the D in the table, and if found, record the outgoing
+        port /op/
+     3. replace any entry for S, so S now maps to /p/
+     4. release the lock
+     5. forward the frame to /op/ if a match was found in step 2 and /p/
+        != /op/ (or discard the frame if /p/ == /op/), and otherwise
+        broadcast the frame to every interface other than /p/ 
+
+
+      Examples
+
+Simulate a network with two switches and two hosts, similar to the
+simulated network of Assignment 10. All of the switches and hosts are
+run on the same physical machine. Each of these commands is run in a
+separate terminal.
+
+ethlearn  45600/45700  45601/45800
+ethlearn  45700/45600  45701/45900
+ethping   45800  45601  800  12:34:44:55:66:77  99:88:77:66:55:44
+ethping   45900  45701  300  99:88:77:66:55:44  12:34:44:55:66:77  
+
+The learning algorithm will be more clearly shown with at least 3 switches:
+
+ethlearn  45100/45200  45101/45300  45102/45400
+ethlearn  45200/45100  45201/45500
+ethlearn  45300/45101  45301/45600
+ethping   45400  45102  100  12:34:44:55:66:77  99:88:77:66:55:44
+ethping   45500  45201  200  99:88:77:66:55:44  12:34:44:55:66:77  
+ethping   45600  45301  300  ab:cd:ef:00:01:02  12:34:44:55:66:77  
+
+If all goes well, the first ethping message (100 bytes) will be
+broadcast throughout the network and add 12:34:44:55:66:77 to each of
+the forwarding tables. Then, each of the other packets should only be
+delivered to the first ethping, and not to the others.
+
+
+    Results
+
+Please follow the examples above in reporting the results of your
+routing table lookup. This makes it easier for the TA to grade a large
+number of assignments.
+
+*Turn in your source code for ethping.c and ethlearn.c or the equivalent
+Python code (and any other code, e.g. header files).*
+
+
+    Python Notes
+
+To pack several bytes (b1, b2, b3 ... bn) into a byte array, you can call
+
+somedata = struck.pack(format,b1,b2,b3,...,bn)
+
+See the struct <https://docs.python.org/3/library/struct.html>
+documentation.
+
+You may also want to review the Python Socket Programming HOWTO
+<https://docs.python.org/3.4/howto/sockets.html>.
+
+
+    Options
+
+If you connect your switches so there is at least one loop, you may
+enjoy seeing the packets being forwarded forever. Actually, they may or
+may not -- what determines this?
+
+If you have extra time, you may reply to any packet that you have not
+seen before, and that is not an answer to your prior packets.
+
+You may also have ethping send multiple packets when additional
+parameters are specified.
+
+You could add an age to forwarding table entries, and discard any
+entries that are older than a certain age, e.g. 30s. This is not very
+useful in our setup, because whenever a host (ethping) connects, it
+sends a packet, which sets up all the forwarding tables in the switches
+the packet encounters. To see the full effect, you can add an optional
+delay before ethping sends its packet. Then, packets sent to the
+destination before the forwarding table entries expire should get
+delivered only to the old interface, whereas after the entries have
+expired, new messages for the host should be broadcast and reach the new
+location of the host.
+
+Because our hosts are simulated, you can explore what happens if
+multiple hosts use the same MAC address. This is something an attacker
+might do on a LAN.
+
+You may want to consider what algorithms are efficient for storing and
+searching in the forwarding table in case of (a) large number of
+entries, or (b) large number of interfaces, or (c) both.
+
+
+
+Computer Networks, ICS 451
+Instructor: Edo Biagioni <mailto:esb@hawaii.edu>
+
