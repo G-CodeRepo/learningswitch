@@ -3,6 +3,8 @@
 // 5/4/2015
 
 Notes:
+project simulates a Learning Switch (in the Data-Link layer). This was implemented using the C programming language and multi-threading to send and receive packets. Each switch will "learn"​ by storing the address of the packet it receives on a table. Each switch has it's own separate table for sending or forwarding packets.
+
 ething.c and ethlearn.c was compiled using gcc.
 debugging prints can be displayed by make PRINT = 1
 
